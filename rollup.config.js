@@ -9,7 +9,7 @@ export default {
       file: './public/zForm.min.js',
       format: 'iife',
       name: 'zForm',
-      sourcemap: true,
+      sourcemap: false,
       plugins: [
         terser({
           compress: {
