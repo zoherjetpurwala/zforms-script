@@ -1,31 +1,52 @@
 /**
  * zForms Tracking Script
- * Privacy-first form analytics
+ * Privacy-first form analytics with optimized resource usage
  */
 import type { zFormsConfig } from './types';
 declare class zForms {
     private config;
     private queue;
     private sessionId;
-    private fieldStates;
+    private formStates;
     private initialized;
+    private mutationObserver;
     constructor(config: zFormsConfig);
     /**
      * Initialize tracking
      */
     private init;
     /**
-     * Attach event listeners to all form inputs
+     * Setup tracking for all forms
+     */
+    private setupTracking;
+    /**
+     * Setup tracking for dynamically added forms
+     */
+    private setupDynamicFormTracking;
+    /**
+     * Attach event listeners to all existing forms
      */
     private attachListeners;
     /**
-     * Handle focus event
+     * Attach listeners to a specific form
+     */
+    private attachFormListeners;
+    /**
+     * Check if field has a value
+     */
+    private hasFieldValue;
+    /**
+     * Handle focus event - tracks interaction count and updates last focused field
      */
     private handleFocus;
     /**
-     * Handle blur event
+     * Handle blur event with debouncing - reduces resource usage
      */
     private handleBlur;
+    /**
+     * Handle field change - tracks completion
+     */
+    private handleChange;
     /**
      * Handle form submission
      */
@@ -35,9 +56,13 @@ declare class zForms {
      */
     private handleError;
     /**
-     * Setup abandonment tracking
+     * Setup accurate abandonment tracking
      */
     private setupAbandonmentTracking;
+    /**
+     * Track form abandonment with specific field information
+     */
+    private trackAbandonment;
     /**
      * Track an event
      */
@@ -59,7 +84,21 @@ declare class zForms {
      */
     track(formId: string, fieldId: string, eventType: string): void;
     /**
-     * Public API: Destroy instance
+     * Public API: Get current session analytics
+     */
+    getSessionAnalytics(): {
+        session_id: string;
+        forms: Array<{
+            form_id: string;
+            total_fields: number;
+            completed_fields: number;
+            total_interactions: number;
+            total_time_spent: number;
+            submitted: boolean;
+        }>;
+    };
+    /**
+     * Public API: Destroy instance and clean up
      */
     destroy(): void;
 }
