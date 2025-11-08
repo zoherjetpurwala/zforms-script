@@ -16,7 +16,7 @@ class zForms {
 
   constructor(config: zFormsConfig) {
     this.config = {
-      api_url: 'https://zForms.xyz/api/zForms/events',
+      api_url: 'https://zForms.xyz/api/zforms/events',
       batch_size: 10,
       batch_interval: 5000,
       debug: false,
