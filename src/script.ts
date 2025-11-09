@@ -603,7 +603,7 @@ const projectKey = scriptTag?.getAttribute('data-zForms')
 if (projectKey) {
   const config: zFormsConfig = {
     project_key: projectKey,
-    api_url: scriptTag?.getAttribute('data-api-url') || undefined,
+    api_url: scriptTag?.getAttribute('data-api-url') || 'https://www.zforms.xyz/api/zforms/events',
     debug: scriptTag?.hasAttribute('data-debug'),
   }
 
