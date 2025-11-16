@@ -13,6 +13,8 @@ class zForms {
   private formStates: Map<string, FormState> = new Map()
   private initialized = false
   private mutationObserver: MutationObserver | null = null
+  private submittedForms: Set<string> = new Set() // Track submitted forms atomically
+  private isUnloading = false // Track if page is unloading
 
   constructor(config: zFormsConfig) {
     this.config = {
@@ -22,6 +24,7 @@ class zForms {
       debug: false,
       track_changes: false, // Default to false for better performance
       debounce_time: 300, // 300ms debounce for blur events
+      blur_threshold: 100, // 100ms minimum time to track blur (lowered from 500ms)
       ...config,
     }
 
@@ -206,20 +209,20 @@ class zForms {
     // Update form's last focused field for accurate abandonment tracking
     formState.last_focused_field = fieldId
 
-    // Only track first interaction to reduce events (performance optimization)
-    if (fieldState.interaction_count === 1) {
-      this.trackEvent({
-        form_id: formId,
-        field_id: fieldId,
-        event_type: 'interaction',
-        session_id: this.sessionId,
-        timestamp: new Date().toISOString(),
-        metadata: {
-          field_position: fieldPosition,
-          total_fields: formState.total_fields,
-        },
-      })
-    }
+    // Track ALL interactions (not just first) for accurate analytics
+    this.trackEvent({
+      form_id: formId,
+      field_id: fieldId,
+      event_type: 'interaction',
+      session_id: this.sessionId,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        field_position: fieldPosition,
+        total_fields: formState.total_fields,
+        interaction_count: fieldState.interaction_count,
+        is_revisit: fieldState.interaction_count > 1,
+      },
+    })
 
     if (this.config.debug && fieldState.interaction_count > 1) {
       console.log(
@@ -257,8 +260,9 @@ class zForms {
         fieldState.has_value = this.hasFieldValue(element)
       }
 
-      // Only track blur if significant time was spent (>500ms) to reduce noise
-      if (timeSpent > 500) {
+      // Only track blur if minimum time was spent (configurable, default 100ms)
+      const blurThreshold = this.config.blur_threshold || 100
+      if (timeSpent > blurThreshold) {
         this.trackEvent({
           form_id: formId,
           field_id: fieldId,
@@ -310,9 +314,12 @@ class zForms {
   }
 
   /**
-   * Handle form submission
+   * Handle form submission - with atomic tracking to prevent false abandonment
    */
-  private handleSubmit(formId: string): void {
+  private async handleSubmit(formId: string): Promise<void> {
+    // CRITICAL: Mark form as submitted BEFORE any async operations
+    this.submittedForms.add(formId)
+
     const formState = this.formStates.get(formId)
     if (formState) {
       formState.submitted = true
@@ -339,11 +346,16 @@ class zForms {
         total_fields: formState?.total_fields || 0,
         field_completed: completedFields === (formState?.total_fields || 0),
         interaction_count: totalInteractions,
+        completed_fields: completedFields,
       },
     })
 
-    // Force send immediately
-    this.queue.flush()
+    // Force send immediately with beacon for guaranteed delivery
+    await this.queue.flushAsync()
+
+    if (this.config.debug) {
+      console.log(`[zForms] Form submitted: ${formId} (${completedFields}/${formState?.total_fields || 0} fields)`)
+    }
   }
 
   /**
@@ -371,34 +383,48 @@ class zForms {
   }
 
   /**
-   * Setup accurate abandonment tracking
+   * Setup accurate abandonment tracking - ONLY on actual page unload
    */
   private setupAbandonmentTracking(): void {
-    // Track abandonment on page visibility change (more reliable than beforeunload)
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        this.trackAbandonment()
-      }
-    }
+    // CRITICAL FIX: Only track abandonment on ACTUAL page unload, not visibility changes
+    // Visibility changes happen when user switches tabs (not abandonment!)
 
     const handleBeforeUnload = () => {
+      this.isUnloading = true
       this.trackAbandonment()
     }
 
-    document.addEventListener('visibilitychange', handleVisibilityChange)
+    const handlePageHide = () => {
+      this.isUnloading = true
+      this.trackAbandonment()
+    }
+
+    // Use beforeunload and pagehide for actual page exits
     window.addEventListener('beforeunload', handleBeforeUnload)
-    window.addEventListener('pagehide', handleBeforeUnload)
+    window.addEventListener('pagehide', handlePageHide)
+
+    // NOTE: We deliberately do NOT use visibilitychange here to avoid
+    // false abandonment when user switches tabs to copy/paste information
   }
 
   /**
    * Track form abandonment with specific field information
+   * CRITICAL: Uses atomic submittedForms Set to prevent race conditions
    */
   private trackAbandonment(): void {
     this.formStates.forEach((formState, formId) => {
-      // Skip if form was submitted
+      // CRITICAL: Check atomic submittedForms Set first (prevents race condition)
+      if (this.submittedForms.has(formId)) {
+        if (this.config.debug) {
+          console.log(`[zForms] Skipping abandonment for submitted form: ${formId}`)
+        }
+        return
+      }
+
+      // Double-check formState.submitted as fallback
       if (formState.submitted) return
 
-      // Skip if no fields were interacted with
+      // Skip if no fields were interacted with (user never started the form)
       if (!formState.last_focused_field) return
 
       // Calculate progress metrics

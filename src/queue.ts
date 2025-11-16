@@ -182,7 +182,17 @@ export class EventQueue {
   }
 
   /**
-   * Force send all queued events
+   * Force send all queued events (async version)
+   * CRITICAL: Returns promise to ensure events are sent before page unload
+   */
+  async flushAsync(): Promise<void> {
+    if (this.queue.length > 0) {
+      await this.send()
+    }
+  }
+
+  /**
+   * Force send all queued events (sync version for backwards compatibility)
    */
   flush(): void {
     if (this.queue.length > 0) {

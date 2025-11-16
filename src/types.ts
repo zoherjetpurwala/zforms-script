@@ -18,6 +18,8 @@ export interface zFormsEvent {
     field_position?: number
     total_fields?: number
     abandonment_field?: string
+    is_revisit?: boolean // Track if this is a return visit to a field
+    completed_fields?: number // Number of fields completed at submission
   }
 }
 
@@ -29,6 +31,7 @@ export interface zFormsConfig {
   debug?: boolean
   track_changes?: boolean // Track field value changes (default: false for performance)
   debounce_time?: number // Debounce time for blur events in ms (default: 300)
+  blur_threshold?: number // Minimum time in ms to track blur events (default: 100)
 }
 
 export interface EventBatch {
